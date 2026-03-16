@@ -1,5 +1,5 @@
 # AI-NEWS-CRAWLER
-Với tech stack **Python FastAPI, Supabase, OpenAI và GitHub Actions**, hệ thống sẽ hoạt động theo luồng: GitHub Actions làm nhiệm vụ Cronjob (gọi API mỗi giờ) -> FastAPI tiếp nhận request -> Crawl RSS -> OpenAI lọc & tóm tắt -> Lưu Supabase -> Bắn Telegram.
+Với tech stack **Python FastAPI, Supabase, Groq/Gemini và GitHub Actions**, hệ thống sẽ hoạt động theo luồng: GitHub Actions làm nhiệm vụ Cronjob (gọi API mỗi giờ) -> FastAPI tiếp nhận request -> Crawl RSS -> Groq hoặc Gemini lọc & tóm tắt -> Lưu Supabase -> Bắn Telegram.
 
 Dưới đây là kế hoạch triển khai từng bước:
 
@@ -30,7 +30,7 @@ ai-news-service/
 │   │   ├── config.py          # Quản lý Environment Variables (pydantic BaseSettings)
 │   ├── services/
 │   │   ├── crawler.py         # Logic cào dữ liệu (feedparser, requests)
-│   │   ├── openai_service.py  # Giao tiếp với OpenAI API (Filter & Tóm tắt)
+│   │   ├── groq_service.py    # Giao tiếp với Groq API compatible endpoint (Filter & Tóm tắt)
 │   │   ├── supabase_client.py # Giao tiếp với database
 │   │   └── telegram_bot.py    # Logic bắn tin nhắn Telegram
 │   ├── api/
@@ -38,7 +38,7 @@ ai-news-service/
 ├── .github/
 │   └── workflows/
 │       └── cronjob.yml        # Cấu hình GitHub Actions
-├── requirements.txt           # fastapi, uvicorn, openai, supabase, feedparser, requests...
+├── requirements.txt           # fastapi, uvicorn, openai, google-genai, supabase, feedparser, requests...
 ├── .env.example               # Template chứa các biến môi trường
 └── README.md
 
@@ -58,7 +58,11 @@ ai-news-service/
 
 
 3. Tạo file `.env` (không commit lên Git) gồm các biến:
-* `OPENAI_API_KEY=`
+* `LLM_PROVIDER=groq`
+* `GROQ_API_KEY=`
+* `GROQ_MODEL=llama-3.1-8b-instant`
+* `GEMINI_API_KEY=`
+* `GEMINI_MODEL=gemini-2.5-flash`
 * `TELEGRAM_BOT_TOKEN=`
 * `TELEGRAM_CHAT_ID=`
 * `SUPABASE_URL=`
@@ -70,9 +74,10 @@ ai-news-service/
 
 * **`crawler.py`**: Dùng thư viện `feedparser` để đọc RSS feeds. Lấy ra danh sách các object (title, link, description, pubDate) trong vòng 1-2 giờ qua.
 * **`supabase_client.py`**: Khởi tạo client. Viết hàm `check_if_exists(url)` và `save_news(url, title)`.
-* **`openai_service.py`**:
+* **`groq_service.py` / `gemini_service.py`**:
 * Đầu vào: Tiêu đề + Nội dung tóm tắt từ RSS.
 * System Prompt: *"Bạn là một chuyên gia AI. Hãy đọc tin tức sau. Nếu nó nói về việc ra mắt model mới, AI agents, hoặc cập nhật quan trọng về AI trong lập trình (OpenAI, Anthropic, Google...), hãy trả về 1 bản tóm tắt ngắn gọn bằng tiếng Việt (tối đa 3 dòng). Nếu không liên quan hoặc là tin rác, trả về chuỗi 'SKIP'."*
+* `LLM_PROVIDER=groq` dùng `GROQ_API_KEY`; `LLM_PROVIDER=gemini` dùng `GEMINI_API_KEY`.
 
 
 * **`telegram_bot.py`**: Dùng `requests` gọi đến `https://api.telegram.org/bot<TOKEN>/sendMessage`. Format tin nhắn bằng HTML hoặc MarkdownV2 cho đẹp (in đậm tiêu đề, chèn link hyperlink).
@@ -82,7 +87,7 @@ ai-news-service/
 * Trong `main.py`, khởi tạo app FastAPI.
 * Tạo một endpoint bảo mật: `POST /api/v1/trigger-crawl`.
 * *Security check:* Yêu cầu một header `Authorization: Bearer <SECRET_CRON_KEY>` để tránh việc người lạ gọi API của bạn liên tục.
-* *Logic:* Gọi lần lượt Crawler -> Check Supabase -> Bắn qua OpenAI -> Bắn Telegram -> Lưu Supabase.
+* *Logic:* Gọi lần lượt Crawler -> Check Supabase -> Bắn qua Groq hoặc Gemini -> Bắn Telegram -> Lưu Supabase.
 
 
 
@@ -124,8 +129,8 @@ jobs:
 1. **GitHub Actions** gõ cửa **FastAPI** đúng giờ.
 2. **FastAPI** đọc RSS từ 5-10 nguồn uy tín.
 3. Lọc bỏ các URL đã có trong **Supabase**.
-4. Các URL mới được đưa cho **OpenAI** đọc. Tin nào ra kết quả `SKIP` thì bỏ qua.
-5. Tin nào OpenAI tóm tắt thành công -> Format đẹp -> Gửi **Telegram**.
+4. Các URL mới được đưa cho **Groq hoặc Gemini** đọc. Tin nào ra kết quả `SKIP` thì bỏ qua.
+5. Tin nào được tóm tắt thành công -> Format đẹp -> Gửi **Telegram**.
 6. Lưu URL vừa gửi vào **Supabase** để giờ sau không gửi lại.
 
-Bạn muốn mình viết chi tiết mã nguồn (source code) cho phần module nào trước? Ví dụ: file cấu hình kết nối Supabase, logic lọc bằng thư viện feedparser, hay phần prompt cho OpenAI?
+Bạn muốn mình viết chi tiết mã nguồn (source code) cho phần module nào trước? Ví dụ: file cấu hình kết nối Supabase, logic lọc bằng thư viện feedparser, hay phần prompt cho Groq/Gemini?

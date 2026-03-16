@@ -36,9 +36,9 @@ class DegradedPipeline:
                     "stage": "llm_summarize",
                     "url": "https://example.com/post",
                     "source": "Example",
-                    "provider": "openai",
+                    "provider": "groq",
                     "error_type": "RuntimeError",
-                    "message": "OPENAI_API_KEY is not configured",
+                    "message": "GROQ_API_KEY is not configured",
                     "recoverable": True,
                 }
             ],
@@ -97,7 +97,8 @@ def test_trigger_crawl_returns_run_id_and_errors_when_pipeline_degrades():
     assert isinstance(body["run_id"], str)
     assert body["result"]["failed_processing"] == 1
     assert body["result"]["errors"][0]["stage"] == "llm_summarize"
-    assert body["result"]["errors"][0]["provider"] == "openai"
+    assert body["result"]["errors"][0]["provider"] == "groq"
+    assert "OPENAI_API_KEY" not in body["result"]["errors"][0]["message"]
 
 
 def test_trigger_crawl_preserves_http_exceptions():

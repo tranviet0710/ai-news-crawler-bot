@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from app.api.endpoints import build_router
@@ -46,4 +48,18 @@ def create_app(cron_secret: str | None = None, pipeline=None) -> FastAPI:
     return app
 
 
-app = create_app()
+def bootstrap_app() -> FastAPI:
+    try:
+        return create_app()
+    except RuntimeError as exc:
+        startup_error = exc
+
+        @asynccontextmanager
+        async def failing_lifespan(_app: FastAPI):
+            raise startup_error
+            yield
+
+        return FastAPI(title="AI News Crawler", lifespan=failing_lifespan)
+
+
+app = bootstrap_app()

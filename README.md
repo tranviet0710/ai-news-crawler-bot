@@ -1,6 +1,6 @@
 # AI News Crawler
 
-FastAPI service that collects AI news from RSS feeds and Hacker News, filters it with OpenAI or Gemini, stores processed URLs in Supabase, and pushes summaries to Telegram.
+FastAPI service that collects AI news from RSS feeds and Hacker News, filters it with Groq or Gemini, stores processed URLs in Supabase, and pushes summaries to Telegram.
 
 ## Project structure
 
@@ -23,7 +23,24 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Set `LLM_PROVIDER` to `openai` or `gemini`. Only the active provider key is required for summarization.
+Set `LLM_PROVIDER` to `groq` or `gemini`. Only the active provider key is required for summarization.
+
+Default local setup uses Groq:
+
+- `LLM_PROVIDER=groq`
+- `GROQ_API_KEY=<your key>`
+- `GROQ_MODEL=llama-3.1-8b-instant`
+
+Gemini remains supported with:
+
+- `LLM_PROVIDER=gemini`
+- `GEMINI_API_KEY=<your key>`
+- `GEMINI_MODEL=gemini-2.5-flash`
+
+If you were previously using OpenAI-compatible env vars, migrate them as follows:
+
+- `OPENAI_API_KEY` -> `GROQ_API_KEY`
+- `OPENAI_MODEL` -> `GROQ_MODEL`
 
 ## Run locally
 

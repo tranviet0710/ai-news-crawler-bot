@@ -59,8 +59,8 @@ class ExistsFailingRepository(StubRepository):
 
 
 class StubSummarizer:
-    provider = "openai"
-    api_key = "openai-key"
+    provider = "groq"
+    api_key = "groq-key"
 
     def summarize(self, item):
         if item.url.endswith("skip"):
@@ -72,13 +72,13 @@ class StubSummarizer:
 
 
 class FailingSummarizer:
-    provider = "openai"
+    provider = "groq"
     api_key = "secret-key"
 
     def summarize(self, item):
         if item.url.endswith("skip"):
             return None
-        raise RuntimeError("OPENAI_API_KEY=secret-key")
+        raise RuntimeError("GROQ_API_KEY=secret-key")
 
 
 class StubTelegram:
@@ -155,7 +155,7 @@ def test_news_pipeline_skips_send_when_persistence_fails():
     assert result.errors[0]["stage"] == "supabase_save"
 
 
-def test_pipeline_records_sanitized_openai_error(caplog):
+def test_pipeline_records_sanitized_groq_error(caplog):
     caplog.set_level(logging.WARNING)
     pipeline = NewsPipeline(
         crawler=StubCrawler(),
@@ -168,11 +168,12 @@ def test_pipeline_records_sanitized_openai_error(caplog):
 
     assert result.failed_processing == 1
     assert result.errors[0]["stage"] == "llm_summarize"
-    assert result.errors[0]["provider"] == "openai"
+    assert result.errors[0]["provider"] == "groq"
     assert "secret-key" not in str(result.errors[0]["message"])
+    assert "OPENAI_API_KEY" not in str(result.errors[0]["message"])
     assert any(
         getattr(record, "event", None) == "llm_summarize_failed"
-        and getattr(record, "provider", None) == "openai"
+        and getattr(record, "provider", None) == "groq"
         for record in caplog.records
     )
 
