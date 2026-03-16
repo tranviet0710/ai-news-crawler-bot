@@ -1,8 +1,7 @@
 import logging
 from uuid import uuid4
 
-from fastapi import APIRouter, Header, HTTPException, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, status
 
 from app.core.logging import get_logger, log_event, sanitize_message
 
@@ -11,8 +10,29 @@ def build_router(cron_secret: str, pipeline) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["crawler"])
     logger = get_logger("api")
 
-    @router.post("/trigger-crawl")
-    def trigger_crawl(authorization: str | None = Header(default=None)):
+    def _run_pipeline_background(run_id: str) -> None:
+        try:
+            result = pipeline.run(run_id=run_id)
+        except Exception as exc:
+            secrets = pipeline._secrets() if hasattr(pipeline, "_secrets") else []
+            log_event(
+                logger,
+                logging.ERROR,
+                "trigger_crawl_failed",
+                run_id=run_id,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                error_type=type(exc).__name__,
+                error_message=sanitize_message(str(exc), secrets=secrets),
+            )
+            return
+
+        log_event(logger, logging.INFO, "trigger_crawl_finished", run_id=run_id, status_code=status.HTTP_200_OK)
+
+    @router.post("/trigger-crawl", status_code=status.HTTP_202_ACCEPTED)
+    def trigger_crawl(
+        background_tasks: BackgroundTasks,
+        authorization: str | None = Header(default=None),
+    ):
         run_id = uuid4().hex
         log_event(logger, logging.INFO, "trigger_crawl_started", run_id=run_id)
         if not cron_secret:
@@ -35,33 +55,8 @@ def build_router(cron_secret: str, pipeline) -> APIRouter:
                 detail="Invalid or missing bearer token",
             )
 
-        log_event(logger, logging.INFO, "trigger_crawl_authorized", run_id=run_id, status_code=status.HTTP_200_OK)
-        try:
-            result = pipeline.run(run_id=run_id)
-        except HTTPException:
-            raise
-        except Exception as exc:
-            secrets = pipeline._secrets() if hasattr(pipeline, "_secrets") else []
-            log_event(
-                logger,
-                logging.ERROR,
-                "trigger_crawl_failed",
-                run_id=run_id,
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                error_type=type(exc).__name__,
-                error_message=sanitize_message(str(exc), secrets=secrets),
-            )
-            return JSONResponse(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                content={
-                    "status": "error",
-                    "run_id": run_id,
-                    "detail": "Unexpected crawl failure",
-                },
-            )
-
-        payload = result.to_dict() if hasattr(result, "to_dict") else dict(result)
-        log_event(logger, logging.INFO, "trigger_crawl_finished", run_id=run_id, status_code=status.HTTP_200_OK)
-        return {"status": "ok", "run_id": run_id, "result": payload}
+        log_event(logger, logging.INFO, "trigger_crawl_accepted", run_id=run_id, status_code=status.HTTP_202_ACCEPTED)
+        background_tasks.add_task(_run_pipeline_background, run_id)
+        return {"status": "accepted", "run_id": run_id}
 
     return router
