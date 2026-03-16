@@ -4,6 +4,9 @@ on:
   schedule:
     - cron: '0 * * * *'
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   trigger-api:
@@ -17,8 +20,3 @@ jobs:
           curl --fail-with-body -X POST "$API_URL" \
             -H "Authorization: Bearer $CRON_SECRET" \
             -H "Content-Type: application/json"
-            # The API_URL is typically the public endpoint of your deployed FastAPI application.
-            # If you deployed your FastAPI app to GitHub Actions, you need to set the API_URL as a secret in your repository settings.
-            # For example, if your FastAPI app is hosted at https://ai-news-crawler-bot.onrender.com/api/cron, then API_URL should be:
-            # https://ai-news-crawler-bot.onrender.com/api/cron
-            # Replace this with your actual deployed endpoint.
