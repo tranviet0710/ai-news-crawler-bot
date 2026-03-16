@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.egg
+*.egg-info/
+dist/
+build/
+*.log
+
+# Virtual environments
+env/
+venv/
+ENV/
+.venv/
+.env/
+
+# VSCode
+.vscode/
+
+# macOS
+.DS_Store
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Other
+*.sqlite3
+*.db
+*.swp
+*.swo
+.idea/
+*.bak
+*.tmp
+
+# Test and coverage
+htmlcov/
+.coverage
+.cache/
+pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.pyc
+
+# Docker
+*.env
+.env.*
+docker-compose.override.yml
+
+# Ignore secrets
+secrets.json
+credentials.json
