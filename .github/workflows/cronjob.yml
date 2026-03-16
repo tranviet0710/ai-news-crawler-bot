@@ -17,6 +17,7 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           API_URL: ${{ secrets.API_URL }}
         run: |
-          curl --fail-with-body -X POST "$API_URL" \
+          curl --fail-with-body --max-time 30 --retry 3 --retry-delay 5 --retry-all-errors \
+            -X POST "$API_URL" \
             -H "Authorization: Bearer $CRON_SECRET" \
             -H "Content-Type: application/json"
