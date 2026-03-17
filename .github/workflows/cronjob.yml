@@ -2,7 +2,7 @@ name: AI News Crawler Cron
 
 on:
   schedule:
-    - cron: '0 * * * *'
+    - cron: '0 */4 * * *'
   workflow_dispatch:
   push:
     branches:
