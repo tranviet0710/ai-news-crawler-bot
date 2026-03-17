@@ -61,6 +61,13 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest tests
 - Anthropic News via RSS hub
 - TechCrunch AI
 - Hugging Face Blog
+- AWS Machine Learning Blog
+- Google Research Blog
+- Engineering at Meta
+- VentureBeat AI
+- MIT News AI
+- BAIR Blog
+- MIT Technology Review AI
 - Hacker News top stories API
 
 ## Supabase schema
