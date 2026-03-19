@@ -1,0 +1,20 @@
+name: Deployment Notification
+on: [deployment_status] # Triggers when Vercel updates the status in GitHub
+
+jobs:
+  notify:
+    # Only run when the deployment is successful
+    if: github.event.deployment_status.state == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Telegram Message
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          message: |
+            🚀 **Ship Successful!**
+            Project: ${{ github.repository }}
+            Env: ${{ github.event.deployment_status.environment }}
+            URL: ${{ github.event.deployment_status.target_url }}
+            Commited by: ${{ github.actor }}
