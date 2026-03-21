@@ -57,16 +57,19 @@ class StubTelegramBot:
         return type("Payload", (), {"command": text.lstrip("/"), "chat_id": str(chat.get("id")), "username": sender.get("username"), "first_name": sender.get("first_name")})()
 
     def build_welcome_message(self):
-        return "welcome"
+        return "Chào mừng bạn. Gửi /start để đăng ký, /stop để dừng nhận tin, /status để xem trạng thái."
 
     def build_help_message(self):
-        return "help"
+        return "Lệnh hỗ trợ: /start, /stop, /status, /help"
+
+    def build_stop_message(self):
+        return "Bạn đã dừng nhận tin AI mới nhất."
 
     def build_status_message(self, is_active):
-        return "active" if is_active else "inactive"
+        return "Bạn đang đăng ký nhận tin AI mới nhất." if is_active else "Bạn chưa đăng ký nhận tin AI mới nhất. Gửi /start để bắt đầu."
 
     def build_private_chat_only_message(self):
-        return "private only"
+        return "Hãy nhắn tin riêng cho bot và gửi /start để đăng ký."
 
     def send_text(self, chat_id, text):
         self.replies.append((chat_id, text))
@@ -215,7 +218,7 @@ def test_telegram_webhook_subscribes_private_user():
 
     assert response.status_code == 200
     assert repository.upsert_calls == [("42", "viet", "Viet")]
-    assert telegram_bot.replies == [("42", "welcome")]
+    assert telegram_bot.replies == [("42", "Chào mừng bạn. Gửi /start để đăng ký, /stop để dừng nhận tin, /status để xem trạng thái.")]
 
 
 def test_telegram_webhook_returns_guidance_for_group_chat():
@@ -246,7 +249,7 @@ def test_telegram_webhook_returns_guidance_for_group_chat():
 
     assert response.status_code == 200
     assert repository.upsert_calls == []
-    assert telegram_bot.replies == [("-100", "private only")]
+    assert telegram_bot.replies == [("-100", "Hãy nhắn tin riêng cho bot và gửi /start để đăng ký.")]
 
 
 def test_telegram_webhook_status_reads_current_subscription_state():
@@ -277,7 +280,38 @@ def test_telegram_webhook_status_reads_current_subscription_state():
     )
 
     assert response.status_code == 200
-    assert telegram_bot.replies == [("42", "active")]
+    assert telegram_bot.replies == [("42", "Bạn đang đăng ký nhận tin AI mới nhất.")]
+
+
+def test_telegram_webhook_stop_replies_in_vietnamese_with_accents():
+    repository = StubRepository()
+    telegram_bot = StubTelegramBot()
+    app = create_app(
+        cron_secret="top-secret",
+        pipeline=StubPipeline(),
+        repository=repository,
+        telegram_bot=telegram_bot,
+        telegram_webhook_secret="hook-secret",
+    )
+
+    response = asyncio.run(
+        post(
+            app,
+            path="/api/v1/telegram/webhook",
+            headers={"X-Telegram-Bot-Api-Secret-Token": "hook-secret"},
+            json={
+                "message": {
+                    "text": "/stop",
+                    "chat": {"id": 42, "type": "private"},
+                    "from": {"username": "viet", "first_name": "Viet"},
+                }
+            },
+        )
+    )
+
+    assert response.status_code == 200
+    assert repository.deactivate_calls == ["42"]
+    assert telegram_bot.replies == [("42", "Bạn đã dừng nhận tin AI mới nhất.")]
 
 
 def test_trigger_crawl_logs_failure_reason(caplog):

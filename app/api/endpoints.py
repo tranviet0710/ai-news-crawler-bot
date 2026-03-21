@@ -84,7 +84,7 @@ def build_router(cron_secret: str, pipeline, telegram_bot=None, repository=None,
             telegram_bot.send_text(payload.chat_id, telegram_bot.build_welcome_message())
         elif payload.command == "stop":
             repository.deactivate_subscriber(payload.chat_id)
-            telegram_bot.send_text(payload.chat_id, "Da dung gui AI news.")
+            telegram_bot.send_text(payload.chat_id, telegram_bot.build_stop_message())
         elif payload.command == "status":
             subscriber = repository.get_subscriber(payload.chat_id)
             telegram_bot.send_text(payload.chat_id, telegram_bot.build_status_message(bool(subscriber and subscriber.get("is_active"))))

@@ -43,21 +43,24 @@ class TelegramBot:
         return (
             f"<b>{title}</b>\n"
             f"{summary}\n"
-            f"Nguon: {source}\n"
-            f'<a href="{url}">Doc chi tiet</a>'
+            f"Nguồn: {source}\n"
+            f'<a href="{url}">Đọc chi tiết</a>'
         )
 
     def build_welcome_message(self) -> str:
-        return "Chao mung ban. Gui /start de dang ky, /stop de dung nhan tin, /status de xem trang thai."
+        return "Chào mừng bạn. Gửi /start để đăng ký, /stop để dừng nhận tin, /status để xem trạng thái."
 
     def build_help_message(self) -> str:
-        return "Lenh ho tro: /start, /stop, /status, /help"
+        return "Lệnh hỗ trợ: /start, /stop, /status, /help"
+
+    def build_stop_message(self) -> str:
+        return "Bạn đã dừng nhận tin AI mới nhất."
 
     def build_status_message(self, is_active: bool) -> str:
-        return "Ban dang dang ky nhan AI news." if is_active else "Ban chua dang ky nhan AI news. Gui /start de bat dau."
+        return "Bạn đang đăng ký nhận tin AI mới nhất." if is_active else "Bạn chưa đăng ký nhận tin AI mới nhất. Gửi /start để bắt đầu."
 
     def build_private_chat_only_message(self) -> str:
-        return "Hay nhan tin rieng cho bot va gui /start de dang ky."
+        return "Hãy nhắn tin riêng cho bot và gửi /start để đăng ký."
 
     def parse_command(self, update: dict[str, object]) -> CommandPayload | None:
         message = update.get("message")
