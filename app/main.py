@@ -22,24 +22,41 @@ def build_default_crawler(settings):
     return MultiSourceCrawler(crawlers)
 
 
-def create_app(cron_secret: str | None = None, pipeline=None) -> FastAPI:
+def create_app(
+    cron_secret: str | None = None,
+    pipeline=None,
+    repository=None,
+    telegram_bot=None,
+    telegram_webhook_secret: str | None = None,
+) -> FastAPI:
     configure_logging()
     settings = get_settings()
     app = FastAPI(title=settings.app_name)
 
+    active_repository = repository or SupabaseNewsRepository(
+        url=settings.supabase_url,
+        key=settings.supabase_key,
+    )
+    active_telegram_bot = telegram_bot or TelegramBot(
+        bot_token=settings.telegram_bot_token,
+        chat_id=settings.telegram_chat_id,
+    )
+
     active_pipeline = pipeline or NewsPipeline(
         crawler=build_default_crawler(settings),
-        repository=SupabaseNewsRepository(
-            url=settings.supabase_url,
-            key=settings.supabase_key,
-        ),
+        repository=active_repository,
         summarizer=build_summarizer(settings),
-        telegram=TelegramBot(
-            bot_token=settings.telegram_bot_token,
-            chat_id=settings.telegram_chat_id,
-        ),
+        telegram=active_telegram_bot,
     )
-    app.include_router(build_router(cron_secret or settings.cron_secret_key, active_pipeline))
+    app.include_router(
+        build_router(
+            cron_secret or settings.cron_secret,
+            active_pipeline,
+            telegram_bot=active_telegram_bot,
+            repository=active_repository,
+            telegram_webhook_secret=telegram_webhook_secret if telegram_webhook_secret is not None else settings.telegram_webhook_secret,
+        )
+    )
 
     @app.get("/health")
     def healthcheck():

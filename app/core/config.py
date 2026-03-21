@@ -1,5 +1,5 @@
 from functools import lru_cache
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,9 +12,10 @@ class Settings(BaseSettings):
     gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
     telegram_bot_token: str = Field(default="", alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: str = Field(default="", alias="TELEGRAM_CHAT_ID")
+    telegram_webhook_secret: str = Field(default="", alias="TELEGRAM_WEBHOOK_SECRET")
     supabase_url: str = Field(default="", alias="SUPABASE_URL")
     supabase_key: str = Field(default="", alias="SUPABASE_KEY")
-    cron_secret_key: str = Field(default="", alias="CRON_SECRET_KEY")
+    cron_secret: str = Field(default="", validation_alias=AliasChoices("CRON_SECRET", "CRON_SECRET_KEY"))
     groq_model: str = Field(default="llama-3.1-8b-instant", alias="GROQ_MODEL")
     gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
     crawl_lookback_hours: int = Field(default=2, alias="CRAWL_LOOKBACK_HOURS")
@@ -40,6 +41,10 @@ class Settings(BaseSettings):
     @property
     def rss_source_list(self) -> list[str]:
         return [item.strip() for item in self.rss_sources.split(",") if item.strip()]
+
+    @property
+    def cron_secret_key(self) -> str:
+        return self.cron_secret
 
 
 @lru_cache

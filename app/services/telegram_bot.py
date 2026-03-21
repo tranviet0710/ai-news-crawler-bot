@@ -1,14 +1,36 @@
 from __future__ import annotations
 
 import html
+from dataclasses import dataclass
 
 import requests
 
 from app.services.schemas import NewsItem, SummarizedNews
 
 
+@dataclass(frozen=True)
+class CommandPayload:
+    command: str
+    chat_id: str
+    chat_type: str
+    username: str | None
+    first_name: str | None
+
+
+@dataclass(frozen=True)
+class DeliveryError:
+    message: str
+    is_permanent: bool
+
+
+class TelegramDeliveryException(RuntimeError):
+    def __init__(self, message: str, *, is_permanent: bool):
+        super().__init__(message)
+        self.is_permanent = is_permanent
+
+
 class TelegramBot:
-    def __init__(self, bot_token: str, chat_id: str, timeout: int = 15):
+    def __init__(self, bot_token: str, chat_id: str = "", timeout: int = 15):
         self.bot_token = bot_token
         self.chat_id = chat_id
         self.timeout = timeout
@@ -25,16 +47,83 @@ class TelegramBot:
             f'<a href="{url}">Doc chi tiet</a>'
         )
 
-    def send(self, item: NewsItem, ai_summary: SummarizedNews) -> None:
-        if not self.bot_token or not self.chat_id:
-            raise RuntimeError("Telegram bot token or chat id is not configured")
+    def build_welcome_message(self) -> str:
+        return "Chao mung ban. Gui /start de dang ky, /stop de dung nhan tin, /status de xem trang thai."
 
+    def build_help_message(self) -> str:
+        return "Lenh ho tro: /start, /stop, /status, /help"
+
+    def build_status_message(self, is_active: bool) -> str:
+        return "Ban dang dang ky nhan AI news." if is_active else "Ban chua dang ky nhan AI news. Gui /start de bat dau."
+
+    def build_private_chat_only_message(self) -> str:
+        return "Hay nhan tin rieng cho bot va gui /start de dang ky."
+
+    def parse_command(self, update: dict[str, object]) -> CommandPayload | None:
+        message = update.get("message")
+        if not isinstance(message, dict):
+            return None
+        text = message.get("text")
+        chat = message.get("chat")
+        sender = message.get("from") or {}
+        if not isinstance(text, str) or not isinstance(chat, dict):
+            return None
+        chat_id = str(chat.get("id", ""))
+        chat_type = str(chat.get("type", ""))
+        if not text.startswith("/"):
+            return None
+        if chat_type != "private":
+            return CommandPayload(
+                command="unsupported_chat",
+                chat_id=chat_id,
+                chat_type=chat_type,
+                username=sender.get("username") if isinstance(sender, dict) else None,
+                first_name=sender.get("first_name") if isinstance(sender, dict) else None,
+            )
+        command = text.split()[0].lstrip("/").split("@", 1)[0].lower()
+        return CommandPayload(
+            command=command,
+            chat_id=chat_id,
+            chat_type=chat_type,
+            username=sender.get("username") if isinstance(sender, dict) else None,
+            first_name=sender.get("first_name") if isinstance(sender, dict) else None,
+        )
+
+    def send_text(self, chat_id: str, text: str) -> None:
+        self._send_payload(chat_id=chat_id, text=text)
+
+    def send_news(self, chat_id: str, item: NewsItem, ai_summary: SummarizedNews) -> None:
+        self._send_payload(chat_id=chat_id, text=self.build_message(item, ai_summary))
+
+    def send(self, item: NewsItem, ai_summary: SummarizedNews) -> None:
+        if not self.chat_id:
+            raise RuntimeError("Telegram chat id is not configured")
+        self.send_news(self.chat_id, item, ai_summary)
+
+    def classify_delivery_error(self, exc: Exception) -> DeliveryError:
+        if isinstance(exc, TelegramDeliveryException):
+            return DeliveryError(message=str(exc), is_permanent=exc.is_permanent)
+        if isinstance(exc, requests.Timeout):
+            return DeliveryError(message=str(exc), is_permanent=False)
+        if isinstance(exc, requests.HTTPError) and exc.response is not None:
+            description = exc.response.text or str(exc)
+            permanent = exc.response.status_code in {400, 403}
+            return DeliveryError(message=description, is_permanent=permanent)
+        return DeliveryError(message=str(exc), is_permanent=False)
+
+    def _send_payload(self, *, chat_id: str, text: str) -> None:
+        if not self.bot_token or not chat_id:
+            raise RuntimeError("Telegram bot token or chat id is not configured")
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
         payload = {
-            "chat_id": self.chat_id,
-            "text": self.build_message(item, ai_summary),
+            "chat_id": chat_id,
+            "text": text,
             "parse_mode": "HTML",
             "disable_web_page_preview": False,
         }
-        response = requests.post(url, json=payload, timeout=self.timeout)
-        response.raise_for_status()
+        try:
+            response = requests.post(url, json=payload, timeout=self.timeout)
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            classified = self.classify_delivery_error(exc)
+            raise TelegramDeliveryException(classified.message, is_permanent=classified.is_permanent) from exc

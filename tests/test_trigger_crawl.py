@@ -25,6 +25,53 @@ class StubPipeline:
         }
 
 
+class StubRepository:
+    def __init__(self):
+        self.upsert_calls = []
+        self.deactivate_calls = []
+        self.subscribers = {}
+
+    def upsert_subscriber(self, chat_id, username, first_name):
+        self.upsert_calls.append((chat_id, username, first_name))
+        self.subscribers[chat_id] = {"chat_id": chat_id, "is_active": True}
+
+    def deactivate_subscriber(self, chat_id):
+        self.deactivate_calls.append(chat_id)
+        self.subscribers[chat_id] = {"chat_id": chat_id, "is_active": False}
+
+    def get_subscriber(self, chat_id):
+        return self.subscribers.get(chat_id)
+
+
+class StubTelegramBot:
+    def __init__(self):
+        self.replies = []
+
+    def parse_command(self, update):
+        message = update.get("message", {})
+        text = message.get("text", "")
+        chat = message.get("chat", {})
+        sender = message.get("from", {})
+        if chat.get("type") != "private":
+            return type("Payload", (), {"command": "unsupported_chat", "chat_id": str(chat.get("id")), "username": sender.get("username"), "first_name": sender.get("first_name")})()
+        return type("Payload", (), {"command": text.lstrip("/"), "chat_id": str(chat.get("id")), "username": sender.get("username"), "first_name": sender.get("first_name")})()
+
+    def build_welcome_message(self):
+        return "welcome"
+
+    def build_help_message(self):
+        return "help"
+
+    def build_status_message(self, is_active):
+        return "active" if is_active else "inactive"
+
+    def build_private_chat_only_message(self):
+        return "private only"
+
+    def send_text(self, chat_id, text):
+        self.replies.append((chat_id, text))
+
+
 class DegradedPipeline:
     def run(self, *, run_id):
         return {
@@ -119,6 +166,120 @@ def test_trigger_crawl_returns_202_for_unexpected_pipeline_error():
     assert isinstance(body["run_id"], str)
 
 
+def test_telegram_webhook_rejects_invalid_secret():
+    app = create_app(
+        cron_secret="top-secret",
+        pipeline=StubPipeline(),
+        repository=StubRepository(),
+        telegram_bot=StubTelegramBot(),
+        telegram_webhook_secret="hook-secret",
+    )
+
+    response = asyncio.run(
+        post(
+            app,
+            path="/api/v1/telegram/webhook",
+            headers={"X-Telegram-Bot-Api-Secret-Token": "bad"},
+            json={"message": {"text": "/start", "chat": {"id": 42, "type": "private"}, "from": {}}},
+        )
+    )
+
+    assert response.status_code == 401
+
+
+def test_telegram_webhook_subscribes_private_user():
+    repository = StubRepository()
+    telegram_bot = StubTelegramBot()
+    app = create_app(
+        cron_secret="top-secret",
+        pipeline=StubPipeline(),
+        repository=repository,
+        telegram_bot=telegram_bot,
+        telegram_webhook_secret="hook-secret",
+    )
+
+    response = asyncio.run(
+        post(
+            app,
+            path="/api/v1/telegram/webhook",
+            headers={"X-Telegram-Bot-Api-Secret-Token": "hook-secret"},
+            json={
+                "message": {
+                    "text": "/start",
+                    "chat": {"id": 42, "type": "private"},
+                    "from": {"username": "viet", "first_name": "Viet"},
+                }
+            },
+        )
+    )
+
+    assert response.status_code == 200
+    assert repository.upsert_calls == [("42", "viet", "Viet")]
+    assert telegram_bot.replies == [("42", "welcome")]
+
+
+def test_telegram_webhook_returns_guidance_for_group_chat():
+    repository = StubRepository()
+    telegram_bot = StubTelegramBot()
+    app = create_app(
+        cron_secret="top-secret",
+        pipeline=StubPipeline(),
+        repository=repository,
+        telegram_bot=telegram_bot,
+        telegram_webhook_secret="hook-secret",
+    )
+
+    response = asyncio.run(
+        post(
+            app,
+            path="/api/v1/telegram/webhook",
+            headers={"X-Telegram-Bot-Api-Secret-Token": "hook-secret"},
+            json={
+                "message": {
+                    "text": "/start",
+                    "chat": {"id": -100, "type": "group"},
+                    "from": {"username": "viet", "first_name": "Viet"},
+                }
+            },
+        )
+    )
+
+    assert response.status_code == 200
+    assert repository.upsert_calls == []
+    assert telegram_bot.replies == [("-100", "private only")]
+
+
+def test_telegram_webhook_status_reads_current_subscription_state():
+    repository = StubRepository()
+    repository.subscribers["42"] = {"chat_id": "42", "is_active": True}
+    telegram_bot = StubTelegramBot()
+    app = create_app(
+        cron_secret="top-secret",
+        pipeline=StubPipeline(),
+        repository=repository,
+        telegram_bot=telegram_bot,
+        telegram_webhook_secret="hook-secret",
+    )
+
+    response = asyncio.run(
+        post(
+            app,
+            path="/api/v1/telegram/webhook",
+            headers={"X-Telegram-Bot-Api-Secret-Token": "hook-secret"},
+            json={
+                "message": {
+                    "text": "/status",
+                    "chat": {"id": 42, "type": "private"},
+                    "from": {"username": "viet", "first_name": "Viet"},
+                }
+            },
+        )
+    )
+
+    assert response.status_code == 200
+    assert telegram_bot.replies == [("42", "active")]
+
+
 def test_trigger_crawl_logs_failure_reason(caplog):
     caplog.set_level(logging.ERROR)
     app = create_app(cron_secret="top-secret", pipeline=ErrorPipeline())
@@ -133,7 +294,7 @@ def test_trigger_crawl_logs_failure_reason(caplog):
     )
 
 
-async def post(app, headers=None):
+async def post(app, path="/api/v1/trigger-crawl", headers=None, json=None):
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        return await client.post("/api/v1/trigger-crawl", headers=headers)
+        return await client.post(path, headers=headers, json=json)

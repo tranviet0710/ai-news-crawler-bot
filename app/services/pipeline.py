@@ -94,25 +94,44 @@ class NewsPipeline:
                 result.failed_processing += 1
                 continue
 
-            try:
-                self._log(logging.INFO, "telegram_send_started", run_id=run_id, url=item.url, source=item.source, title=item.title)
-                self.telegram.send(item, ai_summary)
-                self._log(logging.INFO, "telegram_send_succeeded", run_id=run_id, url=item.url, source=item.source, title=item.title)
-            except Exception as exc:
-                self._record_error(result, "telegram_send", item, exc)
-                self._log_failure(logging.WARNING, "telegram_send_failed", run_id, item, exc)
-                if hasattr(self.repository, "delete"):
+            subscribers = self._delivery_targets()
+            for chat_id, is_subscriber in subscribers:
+                if hasattr(self.repository, "create_delivery_attempt"):
                     try:
-                        self._log(logging.INFO, "rollback_delete_started", run_id=run_id, url=item.url, source=item.source, title=item.title)
-                        self.repository.delete(item.url)
-                        self._log(logging.INFO, "rollback_delete_succeeded", run_id=run_id, url=item.url, source=item.source, title=item.title)
-                    except Exception as rollback_exc:
-                        self._record_error(result, "rollback_delete", item, rollback_exc)
-                        self._log_failure(logging.ERROR, "rollback_delete_failed", run_id, item, rollback_exc)
-                result.failed_delivery += 1
-                continue
+                        should_send = self.repository.create_delivery_attempt(item.url, chat_id)
+                    except Exception as exc:
+                        self._record_error(result, "telegram_delivery_prepare", item, exc)
+                        self._log_failure(logging.WARNING, "telegram_delivery_prepare_failed", run_id, item, exc)
+                        result.failed_delivery += 1
+                        continue
+                    if not should_send:
+                        continue
 
-            result.sent += 1
+                try:
+                    self._log(logging.INFO, "telegram_send_started", run_id=run_id, url=item.url, source=item.source, title=item.title, chat_id=chat_id)
+                    if hasattr(self.telegram, "send_news"):
+                        self.telegram.send_news(chat_id, item, ai_summary)
+                    else:
+                        self.telegram.send(item, ai_summary)
+                    if hasattr(self.repository, "mark_delivery_sent"):
+                        self.repository.mark_delivery_sent(item.url, chat_id)
+                    self._log(logging.INFO, "telegram_send_succeeded", run_id=run_id, url=item.url, source=item.source, title=item.title, chat_id=chat_id)
+                    result.sent += 1
+                except Exception as exc:
+                    message = sanitize_message(str(exc), secrets=self._secrets())
+                    if hasattr(self.repository, "mark_delivery_failed"):
+                        self.repository.mark_delivery_failed(item.url, chat_id, message)
+                    delivery_error = getattr(self.telegram, "classify_delivery_error", lambda error: None)(exc)
+                    if (
+                        is_subscriber
+                        and delivery_error is not None
+                        and getattr(delivery_error, "is_permanent", False)
+                        and hasattr(self.repository, "deactivate_subscriber_for_delivery_error")
+                    ):
+                        self.repository.deactivate_subscriber_for_delivery_error(chat_id, getattr(delivery_error, "message", message))
+                    self._record_error(result, "telegram_send", item, exc)
+                    self._log_failure(logging.WARNING, "telegram_send_failed", run_id, item, exc, chat_id=chat_id)
+                    result.failed_delivery += 1
 
         self._log(
             logging.INFO,
@@ -165,3 +184,17 @@ class NewsPipeline:
             getattr(self.telegram, "bot_token", ""),
             getattr(self.telegram, "chat_id", ""),
         ]
+
+    def _delivery_targets(self) -> list[tuple[str, bool]]:
+        if hasattr(self.repository, "list_active_subscribers"):
+            subscribers = [
+                (str(subscriber.get("chat_id", "")), True)
+                for subscriber in self.repository.list_active_subscribers()
+                if subscriber.get("chat_id")
+            ]
+            if subscribers:
+                return subscribers
+        fallback_chat_id = getattr(self.telegram, "chat_id", "")
+        if fallback_chat_id:
+            return [(str(fallback_chat_id), False)]
+        return []
