@@ -163,7 +163,7 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest tests
 
 ## Supported sources
 
-- OpenAI Blog
+- OpenAI News
 - Google AI Blog
 - Anthropic News via RSS hub
 - TechCrunch AI
@@ -175,6 +175,8 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest tests
 - MIT News AI
 - BAIR Blog
 - MIT Technology Review AI
+- Microsoft Research
+- NVIDIA Blog
 - Hacker News top stories API
 
 ## Supabase schema
