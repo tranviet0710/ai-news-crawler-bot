@@ -17,4 +17,4 @@ jobs:
             Project: ${{ github.repository }}
             Env: ${{ github.event.deployment_status.environment }}
             URL: ${{ github.event.deployment_status.target_url }}
-            Commited by: ${{ github.actor }}
+            Committed by: ${{ github.actor }}
